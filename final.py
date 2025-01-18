@@ -4,6 +4,11 @@ import assemblyai as aai
 import os
 import fitz  # PyMuPDF
 import openai
+from phi.agent import Agent
+from phi.model.google import Gemini
+from phi.tools.duckduckgo import DuckDuckGo
+from google.generativeai import upload_file,get_file
+import google.generativeai as genai
 from langchain import PromptTemplate
 from langchain.chains import LLMChain
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
@@ -13,14 +18,24 @@ import validators
 from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
 from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
+import time
+from pathlib import Path
+import tempfile
+from dotenv import load_dotenv
 
-# Set your Groq API key here
-#GROQ_API_KEY = "your Groq api key"
+# Load environment variables from the .env file
+load_dotenv()
 
-# Set your OpenAI API key
-#openai.api_key = 'your openai key'
-# Set AssemblyAI API key
-#aai.settings.api_key = "your assembly api key"
+# Access the API keys
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
+
+# Configure the services with the API keys
+genai.configure(api_key=GOOGLE_API_KEY)
+openai.api_key = OPENAI_API_KEY
+aai.settings.api_key = ASSEMBLYAI_API_KEY
 
 # Set Streamlit page configuration
 st.set_page_config(page_title="LangChain: Summarize Text From YT or Website", page_icon="🦜")
@@ -29,14 +44,14 @@ st.set_page_config(page_title="LangChain: Summarize Text From YT or Website", pa
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 # Sidebar navigation
-page = st.sidebar.selectbox("Navigation", ["Website", "Speech", "Document"])
+page = st.sidebar.selectbox("Navigation", ["Website", "Speech", "Document", "Video"])
 
 
 
 
 if page == "Website":
     st.title("Website URL Summarization")
-    st.image("/Users/shivanshmahajan/Desktop/Text/Images/web3.jpg")
+    st.image("/Users/shivanshmahajan/Desktop/Ultimate_Summarization/Images/web3.jpg")
     st.subheader('Summarize URL')
 
     # Input field for URL
@@ -53,7 +68,7 @@ if page == "Website":
     }[summary_length]
 
     # Gemma Model using Groq API
-    llm = ChatGroq(model="Gemma-7b-It", groq_api_key=GROQ_API_KEY)
+    llm = ChatGroq(model="gemma2-9b-it", groq_api_key=GROQ_API_KEY)
 
     # Prompt template for summarization
     prompt_template = f"""
@@ -137,7 +152,7 @@ elif page == "Speech":
            return "Summary could not be generated."
 
     st.title("Audio Summarization")
-    st.image("/Users/shivanshmahajan/Desktop/Text/Images/audio.jpg")
+    st.image("//Users/shivanshmahajan/Desktop/Ultimate_Summarization/Images/audio.jpg")
 
     # File upload
     uploaded_file = st.file_uploader("Choose an audio file...", type=["mp3", "mp4", "wav", "m4a"])
@@ -158,7 +173,7 @@ elif page == "Speech":
                 else:
                     st.error("Transcription failed. Please try again.")
 
-else:
+elif page =="Document":
     def read_pdf(file):
        text = ""
        pdf_document = fitz.open(stream=file.read(), filetype="pdf")
@@ -231,7 +246,7 @@ else:
 
 # Streamlit app layout
     st.title("Document Summarization")
-    st.image("/Users/shivanshmahajan/Desktop/Text/Images/doc.jpg")
+    st.image("/Users/shivanshmahajan/Desktop/Ultimate_Summarization/Images/doc.jpg")
 
 # File upload
     uploaded_file = st.file_uploader("Upload a TXT or PDF file", type=["txt", "pdf"])
@@ -266,3 +281,85 @@ else:
         
           st.subheader("Summary")
           st.text_area("Summary", result, height=200)
+
+else:
+    @st.cache_resource
+    def initialize_agent():
+       return Agent(
+        name="Video AI Summarizer",
+        model=Gemini(id="gemini-2.0-flash-exp"),
+        tools=[DuckDuckGo()],
+        markdown=True,
+    )
+
+## Initialize the agent
+    multimodal_Agent=initialize_agent()   # This is the "Video" page
+    st.title("Video Analysis")
+
+    # File uploader for video
+    video_file = st.file_uploader(
+        "Upload a video file", type=['mp4', 'mov', 'avi'], help="Upload a video for AI analysis"
+    )
+
+    if video_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
+            temp_video.write(video_file.read())
+            video_path = temp_video.name
+
+        st.video(video_path, format="video/mp4", start_time=0)
+
+        user_query = st.text_area(
+            "What insights are you seeking from the video?",
+            placeholder="Ask anything about the video content. The AI agent will analyze and gather additional context if needed.",
+            help="Provide specific questions or insights you want from the video."
+        )
+
+        if st.button("🔍 Analyze Video", key="analyze_video_button"):
+            if not user_query:
+                st.warning("Please enter a question or insight to analyze the video.")
+            else:
+                try:
+                    with st.spinner("Processing video and gathering insights..."):
+                        # Upload and process video file
+                        processed_video = upload_file(video_path)
+                        while processed_video.state.name == "PROCESSING":
+                            time.sleep(1)
+                            processed_video = get_file(processed_video.name)
+
+                        # Prompt generation for analysis
+                        analysis_prompt = (
+                            f"""
+                            Analyze the uploaded video for content and context.
+                            Respond to the following query using video insights and supplementary web research:
+                            {user_query}
+
+                            Provide a detailed, user-friendly, and actionable response.
+                            """
+                        )
+
+                        # AI agent processing
+                        response = multimodal_Agent.run(analysis_prompt, videos=[processed_video])
+
+                    # Display the result
+                    st.subheader("Analysis Result")
+                    st.markdown(response.content)
+
+                except Exception as error:
+                    st.error(f"An error occurred during analysis: {error}")
+                finally:
+                    # Clean up temporary video file
+                    Path(video_path).unlink(missing_ok=True)
+    else:
+        st.info("Upload a video file to begin analysis.")
+
+    # Customize text area height
+    st.markdown(
+        """
+        <style>
+        .stTextArea textarea {
+            height: 100px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
