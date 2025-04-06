@@ -1,0 +1,61 @@
+.sidebar {
+  width: 220px;
+  background-color: var(--card-bg);
+  height: calc(100vh - 64px); /* Adjust based on header height */
+  padding: 1.5rem 0;
+  border-right: 1px solid var(--border-color);
+  position: sticky;
+  top: 64px; /* Should match header height */
+}
+
+.nav-menu ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nav-menu li {
+  margin-bottom: 0.25rem;
+}
+
+.nav-menu li button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.8rem 1.5rem;
+  text-align: left;
+  background: transparent;
+  color: var(--text-light);
+  font-weight: 500;
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.nav-menu li button:hover {
+  background-color: rgba(59, 130, 246, 0.05);
+  color: var(--text-color);
+}
+
+.nav-menu li.active button {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: var(--primary-color);
+  border-left-color: var(--primary-color);
+}
+
+.nav-menu li button svg {
+  margin-right: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 70px;
+  }
+  
+  .nav-menu li button span {
+    display: none;
+  }
+  
+  .nav-menu li button svg {
+    margin-right: 0;
+  }
+} 
