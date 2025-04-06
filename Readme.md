@@ -1,124 +1,95 @@
-# Ultimate Summarization API
+# Document Summarization API
 
-A unified API for summarizing various types of content:
-- YouTube videos
-- Uploaded videos
-- Audio files
-- Documents (general, resume, legal)
-- Websites
+A FastAPI application that provides endpoints for summarizing and analyzing different types of documents:
+
+1. **Legal Documents** - Specialized summarization for contracts, agreements, and other legal texts
+2. **General Documents** - Comprehensive summarization for any general documents
+3. **Resumes** - Structured extraction and analysis of resume information with ATS compatibility scoring
 
 ## Setup
 
-1. Clone this repository
-2. Install dependencies:
+1. Clone the repository
+2. Create a virtual environment:
+   ```
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+3. Install dependencies:
    ```
    pip install -r requirements.txt
    ```
-3. Create a `.env` file with your API keys:
+4. Create a `.env` file in the project root with your API keys:
    ```
-   GOOGLE_API_KEY=your_google_api_key
    OPENAI_API_KEY=your_openai_api_key
-   GROQ_API_KEY=your_groq_api_key
+   TAVILY_API_KEY=your_tavily_api_key  # Optional, for legal document external context
    ```
 
 ## Running the API
 
 Start the FastAPI server:
-```
-python api.py
-```
 
-Or use uvicorn directly:
 ```
-uvicorn api:app --reload
+uvicorn main:app --reload
 ```
 
 The API will be available at http://localhost:8000
 
-## API Documentation
+API documentation is automatically generated and available at:
+- http://localhost:8000/docs (Swagger UI)
+- http://localhost:8000/redoc (ReDoc)
 
-Interactive API documentation is automatically generated and available at http://localhost:8000/docs
+## API Endpoints
 
-## Endpoints
+### Legal Document Summarization
 
-### Video Summarization
+**POST** `/api/legal/summarize`
 
-#### Summarize YouTube Video
-```
-POST /summarize/youtube
-```
-Request body:
-```json
-{
-  "url": "https://www.youtube.com/watch?v=VIDEO_ID",
-  "query": "Summarize this video"
-}
-```
+Upload a legal document (PDF) and get a comprehensive summary. Optionally provide a custom question to focus the summary.
 
-#### Summarize Uploaded Video
-```
-POST /summarize/video
-```
-Form data:
-- `file`: Video file (mp4, etc.)
-- `query`: Query for the video (default: "Summarize this video")
+### General Document Summarization 
 
-### Audio Summarization
+**POST** `/api/general/summarize`
 
-```
-POST /summarize/audio
-```
-Form data:
-- `file`: Audio file (mp3, wav, etc.)
+Upload a general document (PDF, DOCX, or TXT) and get both an executive summary and a detailed summary, along with key topics and points.
 
-### Document Summarization
+### Resume Analysis
 
-```
-POST /summarize/document
-```
-Form data:
-- `file`: Document file (pdf, docx, etc.)
-- `mode`: Document type - "general", "resume", or "legal" (default: "general")
-- `settings`: (Optional) Document-specific settings
+**POST** `/api/resume/analyze`
 
-### Website Summarization
+Upload a resume (PDF) and get structured information extraction and a narrative summary. Optionally provide a job description to get ATS compatibility analysis.
 
-```
-POST /summarize/website
-```
-Request body:
-```json
-{
-  "url": "https://example.com",
-  "summary_length": "Medium"
-}
-```
-Summary length options: "Short", "Medium", "Long"
+## Example Usage
 
-## Examples
+### Using curl
 
-### cURL Examples
-
-#### Summarize YouTube Video
+#### Legal Document Summarization:
 ```bash
-curl -X 'POST' \
-  'http://localhost:8000/summarize/youtube' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    "query": "Summarize the main points of this video"
-  }'
+curl -X POST "http://localhost:8000/api/legal/summarize" \
+     -H "accept: application/json" \
+     -H "Content-Type: multipart/form-data" \
+     -F "file=@contract.pdf" \
+     -F "custom_question=What are the key obligations of each party?"
 ```
 
-#### Summarize Website
+#### General Document Summarization:
 ```bash
-curl -X 'POST' \
-  'http://localhost:8000/summarize/website' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "url": "https://en.wikipedia.org/wiki/Artificial_intelligence",
-    "summary_length": "Medium"
-  }'
+curl -X POST "http://localhost:8000/api/general/summarize" \
+     -H "accept: application/json" \
+     -H "Content-Type: multipart/form-data" \
+     -F "file=@document.pdf" \
+     -F "conciseness=very_concise" \
+     -F "extract_topics=true" \
+     -F "extract_key_points=true" \
+     -F "include_statistics=true"
+```
+
+#### Resume Analysis:
+```bash
+curl -X POST "http://localhost:8000/api/resume/analyze" \
+     -H "accept: application/json" \
+     -H "Content-Type: multipart/form-data" \
+     -F "file=@resume.pdf" \
+     -F "job_description=Job description text here..."
 ```
 
 ## License

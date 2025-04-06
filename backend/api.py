@@ -20,16 +20,176 @@ from video_agent import process_youtube_video, process_uploaded_video, save_uplo
 from speech import process_audio
 
         # Define a placeholder function in case import fails
-from document import UniversalDocumentSummarizer
+from legal import LegalDocumentSummarizer
+from normal import GeneralDocumentSummarizer, SummarySettings
+from resume import ResumeSummarizer
+
 from website import fetch_transcript, summarize_content
-from resume_models import (
-    ResumeData, ATSAnalysis, ResumeSummaryResult, 
-    KeywordMatch, BasicInformation, Experience, Education,
-    Certification, Project, Skill, SkillCategory
-)
+
 app = FastAPI(title="Ultimate Summarization API", 
               description="API for video, audio, document and website summarization",
               version="1.0.0")
+
+legal_summarizer = None
+general_summarizer = None
+resume_summarizer = None
+
+def get_legal_summarizer():
+    global legal_summarizer
+    if legal_summarizer is None:
+        legal_summarizer = LegalDocumentSummarizer()
+    return legal_summarizer
+
+def get_general_summarizer():
+    global general_summarizer
+    if general_summarizer is None:
+        general_summarizer = GeneralDocumentSummarizer()
+    return general_summarizer
+
+def get_resume_summarizer():
+    global resume_summarizer
+    if resume_summarizer is None:
+        resume_summarizer = ResumeSummarizer()
+    return resume_summarizer
+
+# Request/Response models
+class LegalSummaryResponse(BaseModel):
+    document_type: str
+    summary: str
+    processing_time: float
+
+class LegalSummaryRequest(BaseModel):
+    custom_question: Optional[str] = None
+
+class GeneralSummaryRequest(BaseModel):
+    conciseness: str = "balanced"
+    focus_areas: List[str] = []
+    extract_topics: bool = True
+    extract_key_points: bool = True
+    include_statistics: bool = False
+    summary_length_percentage: Optional[float] = None
+
+class ResumeAnalysisRequest(BaseModel):
+    job_description: Optional[str] = None
+
+# Routes for Legal Document Summarization
+@app.post("/api/legal/summarize", response_model=LegalSummaryResponse)
+async def summarize_legal_document(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    custom_question: Optional[str] = Form(None)
+):
+    """Summarize a legal document (PDF format)"""
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    
+    try:
+        # Save uploaded file to temp directory
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        temp_file_path = temp_file.name
+        
+        contents = await file.read()
+        with open(temp_file_path, 'wb') as f:
+            f.write(contents)
+            
+        # Process the document
+        summarizer = get_legal_summarizer()
+        result = summarizer.generate_summary(temp_file_path, custom_question)
+        
+        # Clean up temp file in the background
+        background_tasks.add_task(os.unlink, temp_file_path)
+        
+        return result
+    except Exception as e:
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+        raise HTTPException(status_code=500, detail=f"Error processing legal document: {str(e)}")
+
+# Routes for General Document Summarization
+@app.post("/api/general/summarize")
+async def summarize_general_document(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    conciseness: str = Form("balanced"),
+    extract_topics: bool = Form(True),
+    extract_key_points: bool = Form(True),
+    include_statistics: bool = Form(False),
+    summary_length_percentage: Optional[float] = Form(None)
+):
+    """Summarize a general document (PDF, DOCX, or TXT format)"""
+    valid_extensions = ['.pdf', '.docx', '.txt']
+    if not any(file.filename.lower().endswith(ext) for ext in valid_extensions):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file format. Supported formats: {', '.join(valid_extensions)}"
+        )
+    
+    try:
+        # Save uploaded file to temp directory
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
+        temp_file_path = temp_file.name
+        
+        contents = await file.read()
+        with open(temp_file_path, 'wb') as f:
+            f.write(contents)
+            
+        # Configure settings
+        settings = SummarySettings(
+            conciseness=conciseness,
+            extract_topics=extract_topics,
+            extract_key_points=extract_key_points,
+            include_statistics=include_statistics,
+            summary_length_percentage=summary_length_percentage
+        )
+            
+        # Process the document
+        summarizer = get_general_summarizer()
+        result = summarizer.summarize_document(temp_file_path, settings.model_dump())
+        
+        # Clean up temp file in the background
+        background_tasks.add_task(os.unlink, temp_file_path)
+        
+        # Convert result to dictionary (JSON serializable)
+        return result.model_dump()
+    except Exception as e:
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+        raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+
+# Routes for Resume Summarization and Analysis
+@app.post("/api/resume/analyze")
+async def analyze_resume(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    job_description: Optional[str] = Form(None)
+):
+    """Analyze a resume (PDF format) with optional job description for ATS comparison"""
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported for resumes")
+    
+    try:
+        # Save uploaded file to temp directory
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        temp_file_path = temp_file.name
+        
+        contents = await file.read()
+        with open(temp_file_path, 'wb') as f:
+            f.write(contents)
+            
+        # Process the resume
+        summarizer = get_resume_summarizer()
+        result = summarizer.process_resume_file(temp_file_path, job_description)
+        
+        # Clean up temp file in the background
+        background_tasks.add_task(os.unlink, temp_file_path)
+        
+        # Convert result to dictionary (JSON serializable)
+        return result.model_dump()
+    except Exception as e:
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+        raise HTTPException(status_code=500, detail=f"Error processing resume: {str(e)}")
 
 # Pydantic models for request validation
 class YouTubeRequest(BaseModel):
@@ -39,11 +199,7 @@ class YouTubeRequest(BaseModel):
 class VideoUploadQuery(BaseModel):
     query: Optional[str] = "Summarize this video"
 
-class DocumentSettings(BaseModel):
-    conciseness: Optional[str] = "balanced"
-    focus_areas: Optional[List[str]] = None
-    job_description: Optional[str] = None
-    custom_question: Optional[str] = None
+
 
 class WebsiteRequest(BaseModel):
     url: HttpUrl
@@ -167,38 +323,7 @@ async def process_audio_endpoint(background_tasks: BackgroundTasks, file: Upload
             content={"success": False, "error": f"Error processing audio: {str(e)}"}
         )
     
-# Document endpoint
-@app.post("/summarize/document", summary="Summarize document")
-async def summarize_document(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    mode: str = Form("general"),
-    settings_json: Optional[str] = Form(None)
-):
-    try:
-        # Create temp file to store the document
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as temp_file:
-            temp_file_path = temp_file.name
-            shutil.copyfileobj(file.file, temp_file)
-        
-        # Parse settings JSON if provided
-        settings = None
-        if settings_json:
-            try:
-                settings = json.loads(settings_json)
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid settings JSON format")
-        
-        # Process the document
-        summarizer = UniversalDocumentSummarizer()
-        result = summarizer.summarize_document(temp_file_path, mode, settings)
-        
-        # Schedule cleanup
-        background_tasks.add_task(lambda: os.unlink(temp_file_path))
-        
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+
 
 # Website endpoint
 @app.post("/summarize/website", summary="Summarize website content")
