@@ -40,3 +40,4 @@ PyPDF2
 docx
 nltk
 python-docx
+phidata

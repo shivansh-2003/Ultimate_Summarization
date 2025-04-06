@@ -10,9 +10,9 @@ from resume_models import (
     Certification, Project, Skill, SkillCategory
 )
 # Import specialized summarizers
-from .normal import GeneralDocumentSummarizer, SummarySettings
-from .resume import ResumeSummarizer
-from .legal import LegalDocumentSummarizer
+from normal import GeneralDocumentSummarizer, SummarySettings
+from resume import ResumeSummarizer
+from legal import LegalDocumentSummarizer
 
 # Load environment variables
 load_dotenv()
