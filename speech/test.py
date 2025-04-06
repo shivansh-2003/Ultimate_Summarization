@@ -2,15 +2,16 @@ import streamlit as st
 from speech import process_audio 
 from dotenv import load_dotenv
 import os
+import traceback
 from langchain_openai import ChatOpenAI
 import openai
 load_dotenv()
 
 # Set your OpenAI API key
-openai.api_key = os.getenv("OPENAI_API_KEY") # Replace with your actual OpenAI API key
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Initialize the ChatOpenAI model
-chat_model = ChatOpenAI(model="gpt-4o-mini")  # You can choose the model you prefer
+chat_model = ChatOpenAI(model="gpt-4o-mini")  
 
 def main():
     st.title("Audio Summarization App")
@@ -25,19 +26,23 @@ def main():
 
         if st.button("Transcribe and Summarize"):
             with st.spinner('Transcribing and summarizing audio...'):
-                result = process_audio(file_path)
-                if result["success"]:
-                    st.success("Processing successful!")
-                    
-                    # Display transcript in an expandable section
-                    with st.expander("View Full Transcript"):
-                        st.write(result["transcript"])
-                    
-                    # Display the summary prominently
-                    st.subheader("Summary")
-                    st.markdown(result["summary"])
-                else:
-                    st.error(result["error"])
+                try:
+                    result = process_audio(file_path)
+                    if result["success"]:
+                        st.success("Processing successful!")
+                        
+                        # Display transcript in an expandable section
+                        with st.expander("View Full Transcript"):
+                            st.write(result["transcript"])
+                        
+                        # Display the summary prominently
+                        st.subheader("Summary")
+                        st.markdown(result["summary"])
+                    else:
+                        st.error(result["error"])
+                except Exception as e:
+                    st.error(f"Error processing audio: {str(e)}")
+                    st.error(traceback.format_exc())
 
 if __name__ == "__main__":
     main()

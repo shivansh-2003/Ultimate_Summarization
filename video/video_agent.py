@@ -4,12 +4,12 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 
-from agno.agent import Agent
+from agno.agent import Agent as AgnoAgent
 from agno.tools.youtube import YouTubeTools
-from phi.agent import Agent
+from phi.agent import Agent as PhiAgent
 from phi.model.google import Gemini
 from phi.tools.duckduckgo import DuckDuckGo
-
+from agno.models.openai import OpenAIChat  # Import OpenAI from agno
 
 import google.generativeai as genai
 from google.generativeai import upload_file, get_file
@@ -24,19 +24,37 @@ if API_KEY:
 else:
     raise ValueError("Google API key not found. Please set the GOOGLE_API_KEY environment variable.")
 
+# For agno library, check for OpenAI API key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    print("Warning: OPENAI_API_KEY environment variable not set. YouTube analysis may not work.")
+
 def initialize_youtube_agent():
     """Initialize an agent for YouTube video processing."""
-    return Agent(
-        name="YouTube Video Summarizer",
-        tools=[YouTubeTools()],
-        show_tool_calls=True,
-        description="You are a YouTube agent. Obtain the captions of a YouTube video and answer questions.",
-        markdown=True
-    )
+    if OPENAI_API_KEY:
+        # Use OpenAI model since AgnoAgent works best with it
+        model = OpenAIChat(api_key=OPENAI_API_KEY)
+        return AgnoAgent(
+            name="YouTube Video Summarizer",
+            model=model,
+            tools=[YouTubeTools()],
+            show_tool_calls=True,
+            description="You are a YouTube agent. Obtain the captions of a YouTube video and answer questions.",
+            markdown=True
+        )
+    else:
+        # Fallback to default - may not work without OpenAI API key
+        return AgnoAgent(
+            name="YouTube Video Summarizer",
+            tools=[YouTubeTools()],
+            show_tool_calls=True,
+            description="You are a YouTube agent. Obtain the captions of a YouTube video and answer questions.",
+            markdown=True
+        )
 
 def initialize_multimodal_agent():
     """Initialize an agent for processing uploaded video files."""
-    return Agent(
+    return PhiAgent(
         name="Video AI Summarizer",
         model=Gemini(id="gemini-2.0-flash-exp"),
         tools=[DuckDuckGo()],
