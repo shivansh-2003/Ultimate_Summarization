@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     poppler-utils \
-    # Add dependencies for PyPDF2
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,8 +25,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -U pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy individual Python files explicitly
+COPY api.py .
+COPY speech.py .
+COPY legal.py .
+COPY normal.py .
+COPY resume.py .
+COPY resume_models.py .
+COPY video_agent.py .
+COPY website.py .
 
 # Expose the port
 EXPOSE $PORT

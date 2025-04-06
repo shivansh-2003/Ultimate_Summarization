@@ -15,15 +15,10 @@ import uvicorn
 
 # Import module functionality from backend directory
 from video_agent import process_youtube_video, process_uploaded_video, save_uploaded_video, cleanup_video_file
-
-    # Try importing from backend first
-from speech import process_audio
-
-        # Define a placeholder function in case import fails
+from speech import Process_Audio
 from legal import LegalDocumentSummarizer
 from normal import GeneralDocumentSummarizer, SummarySettings
 from resume import ResumeSummarizer
-
 from website import fetch_transcript, summarize_content
 
 app = FastAPI(title="Ultimate Summarization API", 

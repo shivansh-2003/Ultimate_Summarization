@@ -114,7 +114,7 @@ def summarize_text(text, max_summary_length=2000):
         print(f"Error in summarization process: {e}")
         return "The text could not be summarized due to an error."
 
-def process_audio(file_path):
+def Process_Audio(file_path):
     """Process audio file: transcribe and summarize."""
     transcript = transcribe_audio(file_path)
     if not transcript:
