@@ -35,3 +35,4 @@ agno
 google-genai
 google-generativeai
 assemblyai
+crawl4ai

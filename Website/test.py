@@ -4,9 +4,26 @@ from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
 from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
-
+import asyncio
+from crawl4ai import AsyncWebCrawler
+from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
+import os
+from dotenv import load_dotenv
+load_dotenv()
 # Set your Groq API key here
-#GROQ_API_KEY = "your grog api key"
+GROQ_API_KEY =os.getenv("GROQ_API_KEY")
+
+async def fetch_transcript(url):
+    browser_config = BrowserConfig()  # Default browser configuration
+    run_config = CrawlerRunConfig()   # No timeout argument
+
+    try:
+        async with AsyncWebCrawler(config=browser_config) as crawler:
+            result = await crawler.arun(url=url, config=run_config)
+            return [{"page_content": result.markdown}]  # Return a list of documents
+    except Exception as e:
+        st.error(f"An error occurred while fetching the transcript: {e}")
+        return [{"page_content": ""}]  # Return an empty document on error # Return an empty document on error  # Return a list of documents
 
 def main():
     # Streamlit App Configuration
@@ -47,24 +64,12 @@ def main():
         else:
             try:
                 with st.spinner("Fetching and summarizing content..."):
-                    # Load the content from the URL
-                    if "youtube.com" in generic_url or "youtu.be" in generic_url:
-                        loader = YoutubeLoader.from_youtube_url(generic_url, add_video_info=True)
-                        docs = loader.load()
-                        # Display YouTube video info
-                        video_info = docs[0].metadata
-                        st.info(f"Title: {video_info['title']}\nChannel: {video_info['channel']}\nPublished At: {video_info['publish_date']}")
-                    else:
-                        loader = UnstructuredURLLoader(
-                            urls=[generic_url],
-                            ssl_verify=False,
-                            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"}
-                        )
-                        docs = loader.load()
+                    # Fetch the transcript from the URL
+                    transcript = asyncio.run(fetch_transcript(generic_url))
 
                     # Chain for summarization
                     chain = load_summarize_chain(llm, chain_type="stuff", prompt=prompt)
-                    output_summary = chain.run(docs)
+                    output_summary = chain.run(transcript)
 
                     st.success("Summary:")
                     st.write(output_summary)

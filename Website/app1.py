@@ -4,6 +4,7 @@ from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
 from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
+from langchain_core.messages import HumanMessage, SystemMessage
 
 # Streamlit App Configuration
 st.set_page_config(page_title="LangChain: Summarize Text From YT or Website", page_icon="🦜")
@@ -69,3 +70,32 @@ if st.button("Summarize the Content from YT or Website"):
         except Exception as e:
             st.error("An error occurred during summarization")
             st.exception(f"Exception: {e}")
+
+async def fetch_transcript(url):
+    browser_config = BrowserConfig()  # Default browser configuration
+    run_config = CrawlerRunConfig()   # Default crawl run configuration
+
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        result = await crawler.arun(url=url, config=run_config)
+        return result.markdown  # Return clean markdown content
+
+async def summarize_content(content):
+    # Initialize the ChatGroq model
+    llm = ChatGroq(model="Gemma-7b-It", groq_api_key=groq_api_key)
+    
+    # Format the content using LangChain's messages
+    system_message = SystemMessage(content="You are a helpful assistant that summarizes content.")
+    human_message = HumanMessage(content=f"Summarize the following content:\n\n{content}")
+    
+    # Run the summarization with proper message format
+    response = await llm.ainvoke([system_message, human_message])
+    
+    # Return the content of the response
+    return response.content
+
+async def main():
+    url = "https://www.assemblyai.com/docs/speech-to-text/pre-recorded-audio"  # Example URL
+    transcript = await fetch_transcript(url)
+    summary = await summarize_content(transcript)
+    print("Summary:")
+    print(summary)
