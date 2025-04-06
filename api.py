@@ -13,6 +13,17 @@ import traceback
 import uvicorn
 # Add speech module path if needed
 
+from fastapi.middleware.cors import CORSMiddleware
+import subprocess
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Setup CORS
+
+
 # Import module functionality from backend directory
 from video_agent import process_youtube_video, process_uploaded_video, save_uploaded_video, cleanup_video_file
 from speech import Process_Audio
@@ -24,6 +35,46 @@ from website import fetch_transcript, summarize_content
 app = FastAPI(title="Ultimate Summarization API", 
               description="API for video, audio, document and website summarization",
               version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For development; restrict this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize Playwright on startup
+@app.on_event("startup")
+async def install_playwright_browser():
+    try:
+        logger.info("Checking Playwright browser installation...")
+        # Check if browser is installed by trying to import playwright
+        try:
+            from playwright.async_api import async_playwright
+            logger.info("Playwright is installed, checking browser...")
+            
+            # Check if browser binary exists
+            browser_path = Path("/opt/render/.cache/ms-playwright/chromium-1161/chrome-linux/chrome")
+            if not browser_path.exists():
+                logger.info("Playwright browser not found, installing...")
+                # Install Playwright browser
+                result = subprocess.run(["playwright", "install", "chromium"], 
+                                       capture_output=True, text=True, check=False)
+                if result.returncode != 0:
+                    logger.error(f"Failed to install Playwright browser: {result.stderr}")
+                else:
+                    logger.info("Playwright browser installed successfully")
+            else:
+                logger.info("Playwright browser already installed")
+        except ImportError:
+            logger.error("Playwright not installed, installing package and browser...")
+            # Install playwright package first
+            subprocess.run(["pip", "install", "playwright"], check=False)
+            # Install browser
+            subprocess.run(["playwright", "install", "chromium"], check=False)
+    except Exception as e:
+        logger.error(f"Error during Playwright setup: {str(e)}")
 
 legal_summarizer = None
 general_summarizer = None
@@ -219,10 +270,46 @@ async def summarize_youtube(request: YouTubeRequest):
                 }
             )
         
+        # Try to get video summary
         result = process_youtube_video(str(request.url), request.query)
+        
+        # Check if there's an issue with captions
+        if "can't retrieve the captions" in result or "can't access the captions" in result:
+            logger.warning(f"Caption issue detected for URL: {request.url}")
+            
+            # Try a direct more aggressive approach using video_agent
+            from video_agent import initialize_youtube_agent
+            agent = initialize_youtube_agent()
+            
+            # First try direct caption fetching
+            try:
+                full_query = f"get_transcript {str(request.url)}"
+                captions_response = agent.run(full_query)
+                if captions_response and "transcript" in captions_response.content.lower():
+                    # Now ask the question based on these captions
+                    summary_query = f"{request.query}\n\nAnalyze this transcript: {captions_response.content}"
+                    summary_response = agent.run(summary_query)
+                    return {"success": True, "summary": summary_response.content}
+            except Exception as caption_error:
+                logger.error(f"Error in direct caption approach: {str(caption_error)}")
+                
+            # Fallback to analyze video using available metadata
+            try:
+                metadata_query = f"Analyze the YouTube video at {str(request.url)} using its title, description, and any available metadata. {request.query}"
+                metadata_response = agent.run(metadata_query)
+                return {
+                    "success": True, 
+                    "summary": metadata_response.content,
+                    "warning": "This summary is based on video metadata, not transcript, due to caption retrieval issues."
+                }
+            except Exception as metadata_error:
+                logger.error(f"Error in metadata approach: {str(metadata_error)}")
+        
+        # Return original result if no issues detected
         return {"success": True, "summary": result}
     except Exception as e:
         error_message = str(e)
+        logger.error(f"YouTube summarizer error: {error_message}")
         if "API key" in error_message:
             # Handle API key errors more gracefully
             return JSONResponse(
@@ -280,7 +367,7 @@ async def process_audio_endpoint(background_tasks: BackgroundTasks, file: Upload
             print(f"Audio saved to temporary file: {temp_file_path}, size: {len(file_content)} bytes")
         
         # Process the audio file
-        result = process_audio(temp_file_path)
+        result = Process_Audio(temp_file_path)
         
         # Schedule cleanup of temp file
         if temp_file_path:
@@ -331,8 +418,44 @@ async def summarize_website(request: WebsiteRequest):
             "Long": 500
         }
         
-        # Get content from website
-        content = await fetch_transcript(str(request.url))
+        try:
+            # Get content from website
+            content = await fetch_transcript(str(request.url))
+        except Exception as fetch_error:
+            logger.error(f"Error fetching website content: {str(fetch_error)}")
+            
+            # Check if it's a Playwright browser error
+            error_msg = str(fetch_error)
+            if "Executable doesn't exist" in error_msg or "playwright" in error_msg.lower():
+                # Try to install Playwright browser directly
+                logger.info("Attempting to install Playwright browser directly...")
+                try:
+                    # Force Playwright installation
+                    subprocess.run(["playwright", "install", "chromium"], check=True)
+                    
+                    # Try fetching again after installation
+                    logger.info("Retrying website fetch after Playwright installation...")
+                    content = await fetch_transcript(str(request.url))
+                except Exception as browser_install_error:
+                    logger.error(f"Failed to install browser: {str(browser_install_error)}")
+                    return JSONResponse(
+                        status_code=500,
+                        content={
+                            "success": False,
+                            "error": "Failed to install required browser. Please check server logs.",
+                            "details": "The server needs Playwright browser to be installed. This is likely a deployment configuration issue."
+                        }
+                    )
+            else:
+                # Return error for other issues
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "success": False,
+                        "error": f"Failed to fetch website content: {str(fetch_error)}",
+                        "url": str(request.url)
+                    }
+                )
         
         # Get word count based on summary length
         word_count = summary_word_count.get(request.summary_length, 300)
@@ -347,6 +470,7 @@ async def summarize_website(request: WebsiteRequest):
             "summary": summary
         }
     except Exception as e:
+        logger.error(f"Website summarizer error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing website: {str(e)}")
 
 # Root endpoint for basic health check
