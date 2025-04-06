@@ -30,3 +30,8 @@ unstructured
 pytube
 numexpr
 huggingface_hub
+streamlit
+agno
+google-genai
+google-generativeai
+assemblyai
