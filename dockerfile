@@ -33,4 +33,4 @@ COPY . .
 EXPOSE $PORT
 
 # Command to run the application
-CMD uvicorn backend.api:app --host 0.0.0.0 --port $PORT
+CMD uvicorn api:app --host 0.0.0.0 --port $PORT
