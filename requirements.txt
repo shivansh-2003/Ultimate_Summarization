@@ -37,3 +37,6 @@ google-generativeai
 assemblyai
 crawl4ai
 PyPDF2
+docx
+nltk
+python-docx
