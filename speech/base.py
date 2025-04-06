@@ -2,6 +2,7 @@ import streamlit as st
 from transformers import pipeline
 import assemblyai as aai
 import os
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Set AssemblyAI API key
 #aai.settings.api_key = "your assembly ai api key"
@@ -11,6 +12,15 @@ summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 
 def transcribe_audio(file_path):
+    """
+    Transcribe audio file to text.
+    
+    Args:
+        file_path (str): Path to the audio file
+        
+    Returns:
+        str or None: Transcribed text or None if failed
+    """
     try:
         transcriber = aai.Transcriber()
         transcript = transcriber.transcribe(file_path)
@@ -39,15 +49,80 @@ def split_text(text, max_length=1000):
     return chunks
 
 
-def summarize_text(text):
+def split_text_recursive(text, chunk_size=1000, chunk_overlap=200):
+    """
+    Split text into manageable chunks using LangChain's RecursiveCharacterTextSplitter.
+    
+    Args:
+        text (str): Text to split
+        chunk_size (int): Maximum size of each chunk
+        chunk_overlap (int): Overlap between chunks to maintain context
+        
+    Returns:
+        list: List of Document objects with text chunks
+    """
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+    
+    # Split text into Document objects
+    documents = text_splitter.create_documents([text])
+    
+    # Return the list of Document objects
+    return documents
+
+
+def summarize_text(text, use_recursive_splitter=True):
+    """
+    Summarize text using transformer model.
+    
+    Args:
+        text (str): Text to summarize
+        use_recursive_splitter (bool): Whether to use the recursive text splitter
+        
+    Returns:
+        str: Bullet-point summary
+    """
     try:
-        chunks = split_text(text)
+        if use_recursive_splitter:
+            # Use the advanced recursive splitter
+            doc_chunks = split_text_recursive(text)
+            chunks = [doc.page_content for doc in doc_chunks]
+        else:
+            # Use the basic word-based splitter
+            chunks = split_text(text)
+            
         summaries = [summarizer(chunk, max_length=130, min_length=30, do_sample=False)[0]['summary_text'] for chunk in chunks]
         bullet_points = "\n".join([f"- {summary}" for summary in summaries])
         return bullet_points
     except Exception as e:
         st.error(f"Error in summarization: {e}")
         return "Summary could not be generated."
+
+
+def process_audio(file_path):
+    """
+    Process audio file: transcribe and summarize.
+    
+    Args:
+        file_path (str): Path to the audio file
+        
+    Returns:
+        dict: Result with transcript and summary
+    """
+    transcript = transcribe_audio(file_path)
+    if not transcript:
+        return {"success": False, "error": "Transcription failed"}
+    
+    summary = summarize_text(transcript)
+    return {
+        "success": True,
+        "transcript": transcript,
+        "summary": summary
+    }
 
 
 def main():
@@ -63,14 +138,13 @@ def main():
 
         if st.button("Transcribe and Summarize"):
             with st.spinner('Transcribing audio...'):
-                transcript_text = transcribe_audio(file_path)
-                if transcript_text:
+                result = process_audio(file_path)
+                if result["success"]:
                     with st.spinner('Summarizing text...'):
-                        summary_text = summarize_text(transcript_text)
                         st.write("Summary:")
-                        st.markdown(summary_text)
+                        st.markdown(result["summary"])
                 else:
-                    st.error("Transcription failed. Please try again.")
+                    st.error(result["error"])
 
 
 if __name__ == "__main__":
