@@ -34,3 +34,4 @@ crawl4ai
 nltk
 phidata
 playwright 
+PyPDF2
