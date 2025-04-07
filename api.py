@@ -419,35 +419,108 @@ async def summarize_website(request: WebsiteRequest):
         }
         
         try:
-            # Get content from website
-            content = await fetch_transcript(str(request.url))
+            # Get content from website with improved timeout and retry settings
+            logger.info(f"Attempting to fetch content from {request.url}")
+            content = await fetch_transcript(str(request.url), max_retries=3, timeout=90)
         except Exception as fetch_error:
             logger.error(f"Error fetching website content: {str(fetch_error)}")
+            error_msg = str(fetch_error)
             
             # Check if it's a Playwright browser error
-            error_msg = str(fetch_error)
-            if "Executable doesn't exist" in error_msg or "playwright" in error_msg.lower():
-                # Try to install Playwright browser directly
-                logger.info("Attempting to install Playwright browser directly...")
+            if any(error_text in error_msg.lower() for error_text in [
+                "executable doesn't exist", 
+                "playwright", 
+                "browser", 
+                "has been closed", 
+                "target page"
+            ]):
+                logger.warning("Browser-related error detected, attempting recovery...")
+                
+                # Try to restart/reinstall Playwright
                 try:
-                    # Force Playwright installation
-                    subprocess.run(["playwright", "install", "chromium"], check=True)
+                    # Force browser cleanup and reinstallation
+                    logger.info("Running browser reinstallation...")
+                    subprocess.run(["playwright", "install", "--force", "chromium"], 
+                                  check=False, capture_output=True)
                     
-                    # Try fetching again after installation
-                    logger.info("Retrying website fetch after Playwright installation...")
-                    content = await fetch_transcript(str(request.url))
-                except Exception as browser_install_error:
-                    logger.error(f"Failed to install browser: {str(browser_install_error)}")
-                    return JSONResponse(
-                        status_code=500,
-                        content={
-                            "success": False,
-                            "error": "Failed to install required browser. Please check server logs.",
-                            "details": "The server needs Playwright browser to be installed. This is likely a deployment configuration issue."
-                        }
-                    )
+                    # Try with specific browser path if needed
+                    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
+                    
+                    # Try with a much longer timeout and different config
+                    logger.info("Retrying with more conservative settings...")
+                    browser_config_override = {
+                        "timeout": 120000,  # 2 minute timeout
+                        "headless": True,
+                        "args": [
+                            "--no-sandbox", 
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            "--disable-extensions"
+                        ]
+                    }
+                    
+                    # Import directly to access more configuration options
+                    from crawl4ai import AsyncWebCrawler
+                    from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
+                    
+                    # Try with more conservative settings
+                    browser_config = BrowserConfig(**browser_config_override)
+                    run_config = CrawlerRunConfig(timeout=120, wait_for=5000)
+                    
+                    async with AsyncWebCrawler(config=browser_config) as crawler:
+                        logger.info(f"Attempting direct crawler fetch for {request.url}")
+                        result = await crawler.arun(url=str(request.url), config=run_config)
+                        content = result.markdown
+                        
+                        if not content or len(content.strip()) < 50:
+                            raise ValueError("Retrieved content too short")
+                        
+                        logger.info(f"Successful recovery - got {len(content)} chars")
+                    
+                except Exception as recovery_error:
+                    logger.error(f"Recovery attempt failed: {str(recovery_error)}")
+                    
+                    # If all browser attempts fail, try a fallback approach with a simple HTTP request
+                    try:
+                        logger.info("Attempting fallback with simple HTTP request...")
+                        import httpx
+                        import re
+                        from bs4 import BeautifulSoup
+                        
+                        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                            response = await client.get(str(request.url))
+                            response.raise_for_status()
+                            
+                            # Parse with BeautifulSoup
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            
+                            # Remove script and style elements
+                            for script in soup(["script", "style"]):
+                                script.extract()
+                                
+                            # Get text and clean it
+                            text = soup.get_text(separator=' ', strip=True)
+                            text = re.sub(r'\s+', ' ', text)
+                            
+                            if len(text) > 500:  # Ensure we have enough content
+                                content = text
+                                logger.info(f"Fallback successful - got {len(content)} chars")
+                            else:
+                                raise ValueError("Insufficient content from fallback method")
+                                
+                    except Exception as fallback_error:
+                        logger.error(f"All content retrieval methods failed: {str(fallback_error)}")
+                        return JSONResponse(
+                            status_code=500,
+                            content={
+                                "success": False,
+                                "error": "Unable to retrieve website content after multiple attempts",
+                                "url": str(request.url),
+                                "details": "Server encountered browser issues that could not be resolved. This may be a temporary issue or related to the target website."
+                            }
+                        )
             else:
-                # Return error for other issues
+                # Return error for non-browser issues
                 return JSONResponse(
                     status_code=500,
                     content={

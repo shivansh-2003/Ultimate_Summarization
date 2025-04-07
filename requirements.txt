@@ -33,5 +33,6 @@ assemblyai
 crawl4ai
 nltk
 phidata
-playwright 
+playwright
 PyPDF2
+httpx
