@@ -9,11 +9,27 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 
+interface SummarizerOptions {
+  conciseness: 'detailed' | 'balanced' | 'concise';
+  extract_topics: boolean;
+  extract_key_points: boolean;
+  include_statistics: boolean;
+  summary_length_percentage: number;
+}
+
+interface SummaryResult {
+  summary?: string;
+  topics?: string[];
+  key_points?: string[];
+  statistics?: Record<string, any>;
+  [key: string]: any;
+}
+
 const DocumentSummarizer: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<null | any>(null);
-  const [options, setOptions] = useState({
+  const [result, setResult] = useState<SummaryResult | null>(null);
+  const [options, setOptions] = useState<SummarizerOptions>({
     conciseness: 'balanced',
     extract_topics: true,
     extract_key_points: true,
@@ -75,11 +91,63 @@ const DocumentSummarizer: React.FC = () => {
     }
   };
 
-  const formatKey = (key: string) => {
+  const formatKey = (key: string): string => {
     return key
       .replace(/_/g, ' ')
       .replace(/([A-Z])/g, ' $1')
       .replace(/^./, (str) => str.toUpperCase());
+  };
+
+  // Custom renderer for different result types
+  const renderSummarySection = (key: string, value: any) => {
+    // Skip rendering if the value is null, undefined, or an empty string/array
+    if (
+      value === null || 
+      value === undefined || 
+      value === '' || 
+      (Array.isArray(value) && value.length === 0)
+    ) return null;
+    
+    // Handle arrays (topics, key_points)
+    if (Array.isArray(value)) {
+      return (
+        <div key={key} className="mb-6">
+          <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
+          <ul className="list-disc list-inside space-y-1 text-white">
+            {value.map((item: string, idx: number) => (
+              <li key={idx}>{String(item)}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+    
+    // Handle objects (statistics)
+    if (typeof value === 'object' && value !== null) {
+      return (
+        <div key={key} className="mb-6">
+          <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
+          <div className="grid grid-cols-2 gap-2 text-sm text-white">
+            {Object.entries(value).map(([statKey, statValue]) => (
+              <div key={statKey} className="flex justify-between">
+                <span className="font-medium">{statKey.replace(/_/g, ' ')}:</span>
+                <span>{String(statValue)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    
+    // Handle text content (summary)
+    return (
+      <div key={key} className="mb-6">
+        <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
+        <div className="text-white whitespace-pre-line">
+          {String(value)}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -108,7 +176,7 @@ const DocumentSummarizer: React.FC = () => {
           <Label htmlFor="conciseness">Conciseness Level</Label>
           <Select 
             value={options.conciseness} 
-            onValueChange={(value) => setOptions({...options, conciseness: value})}
+            onValueChange={(value: 'detailed' | 'balanced' | 'concise') => setOptions({...options, conciseness: value})}
           >
             <SelectTrigger id="conciseness" className="bg-darkGray border-muted text-white focus:border-vibrantOrange">
               <SelectValue placeholder="Select conciseness level" />
@@ -216,56 +284,22 @@ const DocumentSummarizer: React.FC = () => {
           </h3>
           <div className="divider mb-4"></div>
           
-          {Object.entries(result).map(([key, value]) => {
-            // Skip rendering if the value is null, undefined, or an empty string/array
-            if (
-              value === null || 
-              value === undefined || 
-              value === '' || 
-              (Array.isArray(value) && value.length === 0)
-            ) return null;
-            
-            // Handle arrays (topics, key_points)
-            if (Array.isArray(value)) {
-              return (
-                <div key={key} className="mb-6">
-                  <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
-                  <ul className="list-disc list-inside space-y-1 text-white">
-                    {value.map((item: string, idx: number) => (
-                      <li key={idx}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            }
-            
-            // Handle objects (statistics)
-            if (typeof value === 'object' && value !== null) {
-              return (
-                <div key={key} className="mb-6">
-                  <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-white">
-                    {Object.entries(value).map(([statKey, statValue]) => (
-                      <div key={statKey} className="flex justify-between">
-                        <span className="font-medium">{statKey.replace(/_/g, ' ')}:</span>
-                        <span>{String(statValue)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-            
-            // Handle text content (summary)
-            return (
-              <div key={key} className="mb-6">
-                <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
-                <div className="text-white whitespace-pre-line">
-                  {String(value)}
-                </div>
-              </div>
-            );
-          })}
+          {/* Render summary first if it exists */}
+          {result.summary && renderSummarySection('summary', result.summary)}
+          
+          {/* Render topics if they exist */}
+          {result.topics && result.topics.length > 0 && renderSummarySection('topics', result.topics)}
+          
+          {/* Render key points if they exist */}
+          {result.key_points && result.key_points.length > 0 && renderSummarySection('key_points', result.key_points)}
+          
+          {/* Render statistics if they exist */}
+          {result.statistics && Object.keys(result.statistics).length > 0 && renderSummarySection('statistics', result.statistics)}
+          
+          {/* Render any other fields that might exist in the API response */}
+          {Object.entries(result)
+            .filter(([key]) => !['summary', 'topics', 'key_points', 'statistics'].includes(key))
+            .map(([key, value]) => renderSummarySection(key, value))}
         </div>
       )}
     </div>
