@@ -65,6 +65,13 @@ const ResumeSummarizer: React.FC = () => {
     }
   };
 
+  const formatKey = (key: string) => {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase());
+  };
+
   return (
     <div className="w-full max-w-3xl mx-auto space-y-8 animate-fade-in">
       <div>
@@ -124,91 +131,93 @@ const ResumeSummarizer: React.FC = () => {
         <div className="rounded-md bg-darkGray p-4 border border-muted animate-fade-in">
           <h3 className="text-lg font-medium text-white mb-2 flex items-center">
             <span className="w-1.5 h-1.5 rounded-full bg-vibrantOrange mr-2"></span>
-            Analysis Result
+            Resume Analysis
           </h3>
           <div className="divider mb-4"></div>
           
-          {result.candidate_name && (
-            <div className="mb-4">
-              <h4 className="text-md font-medium text-white mb-1">Candidate Name</h4>
-              <p className="text-white">{result.candidate_name}</p>
-            </div>
-          )}
-          
-          {result.skills && result.skills.length > 0 && (
-            <div className="mb-4">
-              <h4 className="text-md font-medium text-white mb-1">Skills</h4>
-              <div className="flex flex-wrap gap-2">
-                {result.skills.map((skill: string, idx: number) => (
-                  <span key={idx} className="bg-jetBlack text-white text-xs px-2 py-1 rounded-full">
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {result.experience && (
-            <div className="mb-4">
-              <h4 className="text-md font-medium text-white mb-1">Experience</h4>
-              <div className="text-white whitespace-pre-line">
-                {result.experience}
-              </div>
-            </div>
-          )}
-          
-          {result.education && (
-            <div className="mb-4">
-              <h4 className="text-md font-medium text-white mb-1">Education</h4>
-              <div className="text-white whitespace-pre-line">
-                {result.education}
-              </div>
-            </div>
-          )}
-          
-          {result.summary && (
-            <div className="mb-4">
-              <h4 className="text-md font-medium text-white mb-1">Summary</h4>
-              <div className="text-white whitespace-pre-line">
-                {result.summary}
-              </div>
-            </div>
-          )}
-          
-          {jobDescription && result.job_fit_analysis && (
-            <div className="mb-4">
-              <h4 className="text-md font-medium text-white mb-1">Job Fit Analysis</h4>
-              <div className="text-white whitespace-pre-line">
-                {result.job_fit_analysis}
-              </div>
-              
-              {result.match_percentage && (
-                <div className="mt-2">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Match Percentage</span>
-                    <span>{result.match_percentage}%</span>
-                  </div>
-                  <div className="w-full bg-jetBlack rounded-full h-2.5">
-                    <div 
-                      className="bg-vibrantOrange h-2.5 rounded-full" 
-                      style={{ width: `${result.match_percentage}%` }}
-                    ></div>
+          {Object.entries(result).map(([key, value]) => {
+            // Skip rendering if the value is null, undefined, or an empty string/array
+            if (
+              value === null || 
+              value === undefined || 
+              value === '' || 
+              (Array.isArray(value) && value.length === 0)
+            ) return null;
+            
+            // Handle special case for match_percentage
+            if (key === 'match_percentage') {
+              return (
+                <div key={key} className="mb-4">
+                  <h4 className="text-md font-medium text-white mb-1">{formatKey(key)}</h4>
+                  <div className="mt-2">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-white">Match Score</span>
+                      <span className="text-white">{String(value)}%</span>
+                    </div>
+                    <div className="w-full bg-jetBlack rounded-full h-2.5">
+                      <div 
+                        className="bg-vibrantOrange h-2.5 rounded-full" 
+                        style={{ width: `${Number(value)}%` }}
+                      ></div>
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
-          
-          {result.improvement_suggestions && result.improvement_suggestions.length > 0 && (
-            <div className="mb-4">
-              <h4 className="text-md font-medium text-white mb-1">Improvement Suggestions</h4>
-              <ul className="list-disc list-inside space-y-1 text-white">
-                {result.improvement_suggestions.map((suggestion: string, idx: number) => (
-                  <li key={idx}>{suggestion}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+              );
+            }
+            
+            // Handle arrays (skills, improvement_suggestions)
+            if (Array.isArray(value)) {
+              // Special case for skills
+              if (key === 'skills') {
+                return (
+                  <div key={key} className="mb-4">
+                    <h4 className="text-md font-medium text-white mb-1">{formatKey(key)}</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {value.map((skill: string, idx: number) => (
+                        <span key={idx} className="bg-jetBlack text-white text-xs px-2 py-1 rounded-full">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              
+              // Other arrays
+              return (
+                <div key={key} className="mb-4">
+                  <h4 className="text-md font-medium text-white mb-1">{formatKey(key)}</h4>
+                  <ul className="list-disc list-inside space-y-1 text-white">
+                    {value.map((item: string, idx: number) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            }
+            
+            // Handle objects
+            if (typeof value === 'object' && value !== null) {
+              return (
+                <div key={key} className="mb-4">
+                  <h4 className="text-md font-medium text-white mb-1">{formatKey(key)}</h4>
+                  <pre className="text-white text-sm overflow-x-auto">
+                    {JSON.stringify(value, null, 2)}
+                  </pre>
+                </div>
+              );
+            }
+            
+            // Handle text content
+            return (
+              <div key={key} className="mb-4">
+                <h4 className="text-md font-medium text-white mb-1">{formatKey(key)}</h4>
+                <div className="text-white whitespace-pre-line">
+                  {String(value)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

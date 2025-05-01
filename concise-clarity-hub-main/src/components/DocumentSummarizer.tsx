@@ -7,6 +7,7 @@ import { toast } from "@/hooks/use-toast";
 import { summarizeGeneralDocument } from '@/utils/api';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 
 const DocumentSummarizer: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -16,7 +17,8 @@ const DocumentSummarizer: React.FC = () => {
     conciseness: 'balanced',
     extract_topics: true,
     extract_key_points: true,
-    include_statistics: false
+    include_statistics: false,
+    summary_length_percentage: 30
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,6 +75,13 @@ const DocumentSummarizer: React.FC = () => {
     }
   };
 
+  const formatKey = (key: string) => {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase());
+  };
+
   return (
     <div className="w-full max-w-3xl mx-auto space-y-8 animate-fade-in">
       <div>
@@ -110,6 +119,22 @@ const DocumentSummarizer: React.FC = () => {
               <SelectItem value="concise">Concise</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="summary_length_percentage">Summary Length (% of original)</Label>
+          <div className="flex items-center space-x-4">
+            <Slider
+              id="summary_length_percentage"
+              min={10}
+              max={50}
+              step={5}
+              value={[options.summary_length_percentage]}
+              onValueChange={(value) => setOptions({...options, summary_length_percentage: value[0]})}
+              className="flex-1"
+            />
+            <span className="text-white">{options.summary_length_percentage}%</span>
+          </div>
         </div>
         
         <div className="space-y-4">
@@ -187,54 +212,60 @@ const DocumentSummarizer: React.FC = () => {
         <div className="rounded-md bg-darkGray p-4 border border-muted animate-fade-in">
           <h3 className="text-lg font-medium text-white mb-2 flex items-center">
             <span className="w-1.5 h-1.5 rounded-full bg-vibrantOrange mr-2"></span>
-            Summary Result
+            Document Summary
           </h3>
           <div className="divider mb-4"></div>
           
-          {result.summary && (
-            <div className="mb-6">
-              <h4 className="text-md font-medium text-white mb-2">Summary</h4>
-              <div className="text-white whitespace-pre-line">
-                {result.summary}
-              </div>
-            </div>
-          )}
-          
-          {result.topics && result.topics.length > 0 && (
-            <div className="mb-6">
-              <h4 className="text-md font-medium text-white mb-2">Topics</h4>
-              <ul className="list-disc list-inside space-y-1 text-white">
-                {result.topics.map((topic: string, idx: number) => (
-                  <li key={idx}>{topic}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          
-          {result.key_points && result.key_points.length > 0 && (
-            <div className="mb-6">
-              <h4 className="text-md font-medium text-white mb-2">Key Points</h4>
-              <ul className="list-disc list-inside space-y-1 text-white">
-                {result.key_points.map((point: string, idx: number) => (
-                  <li key={idx}>{point}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          
-          {result.statistics && Object.keys(result.statistics).length > 0 && (
-            <div>
-              <h4 className="text-md font-medium text-white mb-2">Document Statistics</h4>
-              <div className="grid grid-cols-2 gap-2 text-sm text-white">
-                {Object.entries(result.statistics).map(([key, value]) => (
-                  <div key={key} className="flex justify-between">
-                    <span className="font-medium">{key.replace(/_/g, ' ')}:</span>
-                    <span>{String(value)}</span>
+          {Object.entries(result).map(([key, value]) => {
+            // Skip rendering if the value is null, undefined, or an empty string/array
+            if (
+              value === null || 
+              value === undefined || 
+              value === '' || 
+              (Array.isArray(value) && value.length === 0)
+            ) return null;
+            
+            // Handle arrays (topics, key_points)
+            if (Array.isArray(value)) {
+              return (
+                <div key={key} className="mb-6">
+                  <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
+                  <ul className="list-disc list-inside space-y-1 text-white">
+                    {value.map((item: string, idx: number) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            }
+            
+            // Handle objects (statistics)
+            if (typeof value === 'object' && value !== null) {
+              return (
+                <div key={key} className="mb-6">
+                  <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-white">
+                    {Object.entries(value).map(([statKey, statValue]) => (
+                      <div key={statKey} className="flex justify-between">
+                        <span className="font-medium">{statKey.replace(/_/g, ' ')}:</span>
+                        <span>{String(statValue)}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              );
+            }
+            
+            // Handle text content (summary)
+            return (
+              <div key={key} className="mb-6">
+                <h4 className="text-md font-medium text-white mb-2">{formatKey(key)}</h4>
+                <div className="text-white whitespace-pre-line">
+                  {String(value)}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })}
         </div>
       )}
     </div>
