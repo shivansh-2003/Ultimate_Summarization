@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import google.generativeai as genai
 from google.generativeai import upload_file
+from yt import summarize_youtube_video
 
 # Import functions from your video_agent module
 from video_agent import (
@@ -179,6 +180,27 @@ def main():
                     except Exception as e:
                         st.error(f"An error occurred during processing: {str(e)}")
                         st.exception(e)
+
+    st.title("YouTube Transcript to Detailed Notes Converter")
+
+    youtube_link = st.text_input("Enter YouTube Video Link:")
+
+    if youtube_link:
+        try:
+            video_id = youtube_link.split("=")[1]
+            st.image(f"http://img.youtube.com/vi/{video_id}/0.jpg", use_column_width=True)
+        except:
+            st.error("Please enter a valid YouTube URL")
+
+    if st.button("Get Detailed Notes") and youtube_link:
+        with st.spinner("Generating summary..."):
+            summary = summarize_youtube_video(youtube_link)
+            
+        if summary:
+            st.markdown("## Detailed Notes:")
+            st.write(summary)
+        else:
+            st.error("Failed to generate summary. Please check the YouTube link and try again.")
 
 if __name__ == "__main__":
     main()
