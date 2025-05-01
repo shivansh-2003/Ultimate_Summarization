@@ -14,7 +14,13 @@ within 250 words. Please provide the summary of the text given here:  """
 ## getting the transcript data from yt videos
 def extract_transcript_details(youtube_video_url):
     try:
-        video_id = youtube_video_url.split("=")[1]
+        # Extract video ID from various YouTube URL formats
+        if "youtube.com/watch?v=" in youtube_video_url:
+            video_id = youtube_video_url.split("watch?v=")[1].split("&")[0]
+        elif "youtu.be/" in youtube_video_url:
+            video_id = youtube_video_url.split("youtu.be/")[1].split("?")[0]
+        else:
+            raise ValueError("Invalid YouTube URL format")
         
         transcript_text = YouTubeTranscriptApi.get_transcript(video_id)
 
@@ -24,28 +30,44 @@ def extract_transcript_details(youtube_video_url):
 
         return transcript
 
-    except Exception as e:
+    except ValueError as e:
         raise e
+    except Exception as e:
+        raise Exception(f"Failed to retrieve transcript: {str(e)}")
     
 ## getting the summary based on Prompt from Google Gemini Pro
 def generate_gemini_content(transcript_text, prompt):
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt+transcript_text)
-    return response.text
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt+transcript_text)
+        return response.text
+    except Exception as e:
+        raise Exception(f"Failed to generate summary with Gemini: {str(e)}")
 
-def summarize_youtube_video(youtube_link):
+def summarize_youtube_video(youtube_link, custom_prompt=None):
     """
     Main function to summarize a YouTube video
+    
+    Args:
+        youtube_link (str): URL of the YouTube video
+        custom_prompt (str, optional): Custom prompt to use for summarization
+    
+    Returns:
+        str: Summary of the video or None if failed
     """
     try:
         transcript_text = extract_transcript_details(youtube_link)
         if transcript_text:
-            summary = generate_gemini_content(transcript_text, prompt)
+            # Use custom prompt if provided, otherwise use default
+            summary_prompt = custom_prompt if custom_prompt else prompt
+            summary = generate_gemini_content(transcript_text, summary_prompt)
             return summary
         return None
     except Exception as e:
-        print(f"Error summarizing video: {e}")
-        return None
+        # Log the error but don't print to stdout in API context
+        error_message = f"Error summarizing video: {str(e)}"
+        # We'll allow the API to handle and format this error
+        raise Exception(error_message)
 
 # Example usage
 if __name__ == "__main__":
@@ -54,6 +76,16 @@ if __name__ == "__main__":
     if summary:
         print("Summary:")
         print(summary)
+        
+    # Example with custom prompt
+    custom_prompt = """You are Youtube video summarizer. You will be taking the transcript text
+    and extracting the main technical concepts mentioned in the video.
+    Provide the summary in bullet points. Please analyze the text given here: """
+    
+    custom_summary = summarize_youtube_video(youtube_link, custom_prompt)
+    if custom_summary:
+        print("\nCustom Summary:")
+        print(custom_summary)
 
 
 

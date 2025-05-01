@@ -31,6 +31,7 @@ from legal import LegalDocumentSummarizer
 from normal import GeneralDocumentSummarizer, SummarySettings
 from resume import ResumeSummarizer
 from website import fetch_transcript, summarize_content
+from yt import summarize_youtube_video, prompt
 
 app = FastAPI(title="Ultimate Summarization API", 
               description="API for video, audio, document and website summarization",
@@ -260,52 +261,28 @@ async def summarize_youtube(request: YouTubeRequest):
     Returns a JSON with the summary and analysis of the video content.
     """
     try:
-        # Check for required environment variables
-        if not os.getenv("OPENAI_API_KEY"):
+        # Import the YouTube summarization function
+        from yt import summarize_youtube_video, prompt
+        
+        # Create a customized prompt if the user provided a query
+        custom_prompt = None
+        if request.query and request.query != "Summarize this video":
+            custom_prompt = f"""You are Youtube video summarizer. You will be taking the transcript text
+and summarizing the video with focus on this query: "{request.query}"
+Provide the summary in points within 250 words. Please provide the summary of the text given here: """
+            
+        # Call the YouTube summarization function with custom prompt if available
+        result = summarize_youtube_video(str(request.url), custom_prompt)
+        
+        if not result:
             return JSONResponse(
                 status_code=400,
                 content={
                     "success": False, 
-                    "error": "OpenAI API key is required for YouTube video processing. Set the OPENAI_API_KEY environment variable."
+                    "error": "Could not retrieve or summarize the YouTube video transcript."
                 }
             )
         
-        # Try to get video summary
-        result = process_youtube_video(str(request.url), request.query)
-        
-        # Check if there's an issue with captions
-        if "can't retrieve the captions" in result or "can't access the captions" in result:
-            logger.warning(f"Caption issue detected for URL: {request.url}")
-            
-            # Try a direct more aggressive approach using video_agent
-            from video_agent import initialize_youtube_agent
-            agent = initialize_youtube_agent()
-            
-            # First try direct caption fetching
-            try:
-                full_query = f"get_transcript {str(request.url)}"
-                captions_response = agent.run(full_query)
-                if captions_response and "transcript" in captions_response.content.lower():
-                    # Now ask the question based on these captions
-                    summary_query = f"{request.query}\n\nAnalyze this transcript: {captions_response.content}"
-                    summary_response = agent.run(summary_query)
-                    return {"success": True, "summary": summary_response.content}
-            except Exception as caption_error:
-                logger.error(f"Error in direct caption approach: {str(caption_error)}")
-                
-            # Fallback to analyze video using available metadata
-            try:
-                metadata_query = f"Analyze the YouTube video at {str(request.url)} using its title, description, and any available metadata. {request.query}"
-                metadata_response = agent.run(metadata_query)
-                return {
-                    "success": True, 
-                    "summary": metadata_response.content,
-                    "warning": "This summary is based on video metadata, not transcript, due to caption retrieval issues."
-                }
-            except Exception as metadata_error:
-                logger.error(f"Error in metadata approach: {str(metadata_error)}")
-        
-        # Return original result if no issues detected
         return {"success": True, "summary": result}
     except Exception as e:
         error_message = str(e)
@@ -317,7 +294,7 @@ async def summarize_youtube(request: YouTubeRequest):
                 content={
                     "success": False,
                     "error": f"API key error: {error_message}",
-                    "hint": "Check that both GOOGLE_API_KEY and OPENAI_API_KEY environment variables are set correctly."
+                    "hint": "Check that the GOOGLE_API_KEY environment variable is set correctly."
                 }
             )
         raise HTTPException(status_code=500, detail=f"Error processing YouTube video: {error_message}")
